@@ -14,6 +14,7 @@ import traceback
 
 app = Flask(__name__)
 static_tmp_path = os.path.join(os.path.dirname(__file__), 'static', 'tmp')
+
 # Channel Access Token
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 # Channel Secret
@@ -24,11 +25,16 @@ openai.api_base = "https://free.v36.cm/v1"
 
 
 def GPT_response(text):
-    # 接收回應, 下行要確認
-    response = openai.Completion.create(model="gpt-3.5-turbo-instruct", prompt=text, temperature=0.5, max_tokens=500)
+    # 使用 Chat API 來獲取回應
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",  # 改為適用 Chat API 的模型
+        messages=[{"role": "user", "content": text}],
+        temperature=0.5,
+        max_tokens=500
+    )
     print(response)
     # 重組回應
-    answer = response['choices'][0]['text'].replace('。','')
+    answer = response['choices'][0]['message']['content'].strip()
     return answer
 
 
