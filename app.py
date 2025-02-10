@@ -25,7 +25,7 @@ openai.api_base = "https://free.v36.cm/v1"
 
 def GPT_response(text):
     # 接收回應, 下行要確認
-    response = openai.Completion.create(model="gpt-4o-mini", prompt=text, temperature=0.5, max_tokens=500)
+    response = openai.Completion.create(model="gpt-3.5-turbo-instruct", prompt=text, temperature=0.5, max_tokens=500)
     print(response)
     # 重組回應
     answer = response['choices'][0]['text'].replace('。','')
