@@ -25,6 +25,62 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
+# 用來儲存每個用戶的對話歷史
+conversation_history = {}
+
+def GPT_response_with_history(messages):
+    # 在對話歷史前加上系統提示，確保 GPT 用繁體中文回答
+    system_prompt = {"role": "system", "content": "請用繁體中文回答。"}
+    messages_with_system = [system_prompt] + messages
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",  # 使用 GPT-4 模型
+        messages=messages_with_system,
+        temperature=0.5,
+        max_tokens=500
+    )
+    answer = response['choices'][0]['message']['content'].strip()
+    return answer
+
+@app.route("/")
+def home():
+    return "Server is running!", 200
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_id = event.source.user_id  # 獲取用戶的 LINE 用戶 ID
+    msg = event.message.text
+
+    try:
+        # 初始化用戶的對話歷史（如果尚未存在）
+        if user_id not in conversation_history:
+            conversation_history[user_id] = []
+
+        # 將用戶的新訊息加入對話歷史
+        conversation_history[user_id].append({"role": "user", "content": msg})
+
+        # 將對話歷史傳遞給 GPT
+        response = GPT_response_with_history(conversation_history[user_id])
+
+        # 將 GPT 的回應加入對話歷史
+        conversation_history[user_id].append({"role": "assistant", "content": response})
+
+        # 回覆用戶
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+    except Exception as e:
+        print(traceback.format_exc())
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
 
 
 def GPT_response(text):
