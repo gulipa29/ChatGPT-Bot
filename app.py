@@ -42,9 +42,6 @@ def GPT_response_with_history(messages):
     answer = response['choices'][0]['message']['content'].strip()
     return answer
 
-@app.route("/")
-def home():
-    return "Server is running!", 200
 
 @app.route("/callback", methods=['POST'])
 def callback():
