@@ -10,6 +10,8 @@ import datetime
 import openai
 import time
 import traceback
+import requests
+import threading
 #========================
 
 app = Flask(__name__)
@@ -80,7 +82,23 @@ def welcome(event):
     name = profile.display_name
     message = TextSendMessage(text=f'{name}歡迎加入')
     line_bot_api.reply_message(event.reply_token, message)
-        
+
+# === Keep Alive 功能 ===
+def keep_alive():
+    while True:
+        try:
+            url = "https://chatgpt-bot-uzvv.onrender.com/"  # 請替換為你的 Render 伺服器網址
+            response = requests.get(url)
+            print(f"Keep Alive: {response.status_code}")
+        except Exception as e:
+            print(f"Keep Alive 失敗: {e}")
+
+        time.sleep(40)  # 每 40 秒發送一次請求
+
+
+# 啟動 Keep Alive 在獨立執行緒中運行
+threading.Thread(target=keep_alive, daemon=True).start()
+
         
 import os
 if __name__ == "__main__":
