@@ -39,6 +39,10 @@ def GPT_response(text):
     answer = response['choices'][0]['message']['content'].strip()
     return answer
 
+@app.route("/")
+def home():
+    return "Server is running!", 200  # 讓 Render 伺服器知道它還活著
+
 
 # 監聽所有來自 /callback 的 Post Request
 @app.route("/callback", methods=['POST'])
