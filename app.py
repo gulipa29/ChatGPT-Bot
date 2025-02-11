@@ -1,10 +1,7 @@
 from flask import Flask, request, abort
-
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import *
-
-#======python函數庫======
 import tempfile, os
 import datetime
 import openai
@@ -12,7 +9,6 @@ import time
 import traceback
 import requests
 import threading
-#========================
 
 app = Flask(__name__)
 static_tmp_path = os.path.join(os.path.dirname(__file__), 'static', 'tmp')
@@ -41,7 +37,6 @@ def GPT_response_with_history(messages):
     )
     answer = response['choices'][0]['message']['content'].strip()
     return answer
-
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -79,23 +74,6 @@ def handle_message(event):
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
 
-
-@app.route("/")
-def home():
-    return "Server is running!", 200  # 讓 Render 伺服器知道它還活著
-
-# 處理訊息
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    msg = event.message.text
-    try:
-        GPT_answer = GPT_response(msg)
-        print(GPT_answer)
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(GPT_answer))
-    except:
-        print(traceback.format_exc())
-        line_bot_api.reply_message(event.reply_token, TextSendMessage('OpenAI額度問題，請確認Log訊息。'))
-
 @handler.add(PostbackEvent)
 def handle_postback(event):
     print(event.postback.data)
@@ -118,20 +96,19 @@ def keep_alive():
             print(f"Keep Alive: {response.status_code}")
         except Exception as e:
             print(f"Keep Alive 失敗: {e}")
-
         time.sleep(40)  # 每 40 秒發送一次請求
 
 # 啟動 Keep Alive 在獨立執行緒中運行
 threading.Thread(target=keep_alive, daemon=True).start()
 
-import os
+@app.route("/")
+def home():
+    return "Server is running!", 200  # 讓 Render 伺服器知道它還活著
+
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
         
-import os
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
