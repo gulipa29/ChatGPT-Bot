@@ -26,9 +26,47 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
 ###
+# 強制要求繁體中文
+def force_traditional_chinese(text):
+    cc = opencc.OpenCC('s2t.json')  # 使用簡體到繁體的轉換
+    return cc.convert(text)
+
+# 偵測語言
+def detect_language(text):
+    try:
+        language = detect(text)
+        return language
+    except:
+        return "en"  # 假設無法偵測時使用英文
+
+# 記憶功能
+user_memory = {}
+
+def get_user_memory(user_id, key):
+    if user_id not in user_memory:
+        user_memory[user_id] = {}
+    return user_memory[user_id].get(key, None)
+
+def update_user_memory(user_id, key, value):
+    if user_id not in user_memory:
+        user_memory[user_id] = {}
+    user_memory[user_id][key] = value
+
+# 記憶功能加強版
 def GPT_response_with_memory(user_id, text):
-    # 強制要求繁體中文
-    prompt = force_traditional_chinese(text)
+    # 偵測語言
+    language = detect_language(text)
+    
+    # 根據語言進行處理
+    if language == "zh-cn":
+        # 如果是簡體中文，轉為繁體中文
+        prompt = force_traditional_chinese(text)
+    elif language == "zh-tw":
+        # 如果是繁體中文，直接處理
+        prompt = text
+    else:
+        # 其他語言不轉換，直接處理
+        prompt = text
 
     # 檢查用戶是否有記憶（即歷史對話）
     conversation_history = get_user_memory(user_id, "conversation_history")  # 獲取用戶的對話記錄
