@@ -25,37 +25,32 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
-# 記錄對話的歷史訊息
-conversation_history = []
+###
+def GPT_response_with_memory(user_id, text):
+    # 強制要求繁體中文
+    prompt = force_traditional_chinese(text)
 
-def GPT_response(text):
-    # 強制要求繁體中文，將訊息前加上提示語
-    prompt = f"請使用繁體中文回答以下問題：{text}"
-    
-    # 將用戶的訊息加入對話歷史
-    conversation_history.append({"role": "user", "content": prompt})
+    # 檢查用戶是否有記憶（即歷史對話）
+    conversation_history = get_user_memory(user_id, "conversation_history")  # 獲取用戶的對話記錄
+    if conversation_history:
+        prompt = "\n".join(conversation_history) + "\n" + prompt
 
-    # 保持對話歷史在最多 5 條訊息以內
-    if len(conversation_history) > 20:
-        conversation_history.pop(0)  # 移除最舊的訊息
-    
-    # 呼叫 OpenAI API，傳遞歷史訊息
+    # 呼叫 OpenAI API
     response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
-        messages=conversation_history,
+        messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
         max_tokens=500
     )
     
     # 擷取回應訊息
     answer = response['choices'][0]['message']['content'].strip()
-    
-    # 儲存模型的回應到對話歷史
-    conversation_history.append({"role": "assistant", "content": answer})
-    
+
+    # 儲存對話歷史
+    update_user_memory(user_id, "conversation_history", conversation_history + [text, answer])
+
     return answer
-
-
+    ####
 
 def GPT_response(text):
     # 使用 Chat API 來獲取回應
