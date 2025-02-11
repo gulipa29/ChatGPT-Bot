@@ -25,72 +25,7 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
-###
-# 強制要求繁體中文
-def force_traditional_chinese(text):
-    cc = opencc.OpenCC('s2t.json')  # 使用簡體到繁體的轉換
-    return cc.convert(text)
 
-# 偵測語言
-def detect_language(text):
-    try:
-        language = detect(text)
-        return language
-    except:
-        return "en"  # 假設無法偵測時使用英文
-
-# 記憶功能
-user_memory = {}
-
-def get_user_memory(user_id, key):
-    if user_id not in user_memory:
-        user_memory[user_id] = {}
-    return user_memory[user_id].get(key, None)
-
-def update_user_memory(user_id, key, value):
-    if user_id not in user_memory:
-        user_memory[user_id] = {}
-    user_memory[user_id][key] = value
-
-# 記憶功能加強版
-def GPT_response_with_memory(user_id, text):
-    # 偵測語言
-    language = detect_language(text)
-    
-    # 根據語言進行處理
-    if language == "zh-cn":
-        # 如果是簡體中文，轉為繁體中文
-        prompt = force_traditional_chinese(text)
-    elif language == "zh-tw":
-        # 如果是繁體中文，直接處理
-        prompt = text
-    else:
-        # 其他語言不轉換，直接處理
-        prompt = text
-
-    # 檢查用戶是否有記憶（即歷史對話）
-    conversation_history = get_user_memory(user_id, "conversation_history")  # 獲取用戶的對話記錄
-    if conversation_history:
-        prompt = "\n".join(conversation_history) + "\n" + prompt
-
-    # 呼叫 OpenAI API
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5,
-        max_tokens=500
-    )
-    
-    # 擷取回應訊息
-    answer = response['choices'][0]['message']['content'].strip()
-
-    # 儲存對話歷史
-    updated_conversation = conversation_history + [text, answer] if conversation_history else [text, answer]
-    update_user_memory(user_id, "conversation_history", updated_conversation)
-
-    return answer
-
-    ####
 
 def GPT_response(text):
     # 使用 Chat API 來獲取回應
