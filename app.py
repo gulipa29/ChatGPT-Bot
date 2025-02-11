@@ -80,39 +80,9 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
 
 
-def GPT_response(text):
-    # 使用 Chat API 來獲取回應
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",  # 改為適用 Chat API 的模型
-        messages=[{"role": "user", "content": text}],
-        temperature=0.5,
-        max_tokens=500
-    )
-    print(response)
-    # 重組回應
-    answer = response['choices'][0]['message']['content'].strip()
-    return answer
-
 @app.route("/")
 def home():
     return "Server is running!", 200  # 讓 Render 伺服器知道它還活著
-
-
-# 監聽所有來自 /callback 的 Post Request
-@app.route("/callback", methods=['POST'])
-def callback():
-    # get X-Line-Signature header value
-    signature = request.headers['X-Line-Signature']
-    # get request body as text
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
-    # handle webhook body
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-    return 'OK'
-
 
 # 處理訊息
 @handler.add(MessageEvent, message=TextMessage)
@@ -125,12 +95,10 @@ def handle_message(event):
     except:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage('OpenAI額度問題，請確認Log訊息。'))
-        
 
 @handler.add(PostbackEvent)
-def handle_message(event):
+def handle_postback(event):
     print(event.postback.data)
-
 
 @handler.add(MemberJoinedEvent)
 def welcome(event):
@@ -153,9 +121,14 @@ def keep_alive():
 
         time.sleep(40)  # 每 40 秒發送一次請求
 
-
 # 啟動 Keep Alive 在獨立執行緒中運行
 threading.Thread(target=keep_alive, daemon=True).start()
+
+import os
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
 
         
 import os
