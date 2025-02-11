@@ -47,9 +47,11 @@ def GPT_response_with_memory(user_id, text):
     answer = response['choices'][0]['message']['content'].strip()
 
     # 儲存對話歷史
-    update_user_memory(user_id, "conversation_history", conversation_history + [text, answer])
+    updated_conversation = conversation_history + [text, answer] if conversation_history else [text, answer]
+    update_user_memory(user_id, "conversation_history", updated_conversation)
 
     return answer
+
     ####
 
 def GPT_response(text):
