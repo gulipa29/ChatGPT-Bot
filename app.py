@@ -24,6 +24,10 @@ openai.api_base = "https://free.v36.cm/v1"
 # 用來儲存每個用戶的對話歷史
 conversation_history = {}
 
+# Central Weather Bureau API URL 和 Key
+weather_api_url = "https://opendata.cwb.gov.tw/api/v1/rest/datastore/F-D0047-091"  # 即時天氣資料的 API URL
+weather_api_key = "YOUR_CWB_API_KEY"  # 替換為你的中央氣象局 API Key
+
 def GPT_response_with_history(messages):
     # 在對話歷史前加上系統提示，確保 GPT 用繁體中文回答
     system_prompt = {"role": "system", "content": "請用繁體中文回答。"}
@@ -37,6 +41,29 @@ def GPT_response_with_history(messages):
     )
     answer = response['choices'][0]['message']['content'].strip()
     return answer
+
+# 查詢天氣函數
+def get_weather(location):
+    params = {
+        'Authorization': weather_api_key,
+        'locationName': location  # 用戶提供的地點
+    }
+
+    response = requests.get(weather_api_url, params=params)
+    
+    if response.status_code == 200:
+        data = response.json()
+        try:
+            # 擷取返回資料中的天氣信息
+            location_data = data["records"]["location"][0]
+            city = location_data["locationName"]
+            temperature = location_data["weatherElement"][0]["elementValue"]
+            description = location_data["weatherElement"][2]["elementValue"]
+            return f"{city}的即時天氣：\n氣溫：{temperature}°C\n天氣描述：{description}"
+        except KeyError:
+            return "無法查詢天氣，請稍後再試。"
+    else:
+        return "無法取得天氣資料，請檢查 API 設定或稍後再試。"
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -59,17 +86,32 @@ def handle_message(event):
         if user_id not in conversation_history:
             conversation_history[user_id] = []
 
-        # 將用戶的新訊息加入對話歷史
-        conversation_history[user_id].append({"role": "user", "content": msg})
+        # 偵測是否為天氣查詢
+        if "天氣" in msg:
+            location = msg.replace("天氣", "").strip()  # 提取地點名稱
+            if location:
+                weather_info = get_weather(location)
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text=weather_info)
+                )
+            else:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(text="請提供地點名稱來查詢天氣。")
+                )
+        else:
+            # 將用戶的新訊息加入對話歷史
+            conversation_history[user_id].append({"role": "user", "content": msg})
 
-        # 將對話歷史傳遞給 GPT
-        response = GPT_response_with_history(conversation_history[user_id])
+            # 將對話歷史傳遞給 GPT
+            response = GPT_response_with_history(conversation_history[user_id])
 
-        # 將 GPT 的回應加入對話歷史
-        conversation_history[user_id].append({"role": "assistant", "content": response})
+            # 將 GPT 的回應加入對話歷史
+            conversation_history[user_id].append({"role": "assistant", "content": response})
 
-        # 回覆用戶
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+            # 回覆用戶
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
     except Exception as e:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
@@ -108,4 +150,3 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
