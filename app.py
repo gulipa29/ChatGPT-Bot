@@ -49,6 +49,7 @@ def callback():
         abort(400)
     return 'OK'
 
+# === 處理文字訊息 ===
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id  # 獲取用戶的 LINE 用戶 ID
@@ -62,18 +63,30 @@ def handle_message(event):
         # 將用戶的新訊息加入對話歷史
         conversation_history[user_id].append({"role": "user", "content": msg})
 
-        # 將對話歷史傳遞給 GPT
-        response = GPT_response_with_history(conversation_history[user_id])
+        # 如果訊息包含「畫」，則生成圖片
+        if '畫' in msg:  # 例如：畫一隻貓
+            # 使用 Pollinations 生成圖片 URL
+            image_url = f"https://pollinations.ai/p/{msg}"
 
-        # 將 GPT 的回應加入對話歷史
-        conversation_history[user_id].append({"role": "assistant", "content": response})
+            # 回覆圖片訊息
+            line_bot_api.reply_message(
+                event.reply_token,
+                ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+            )
+        else:
+            # 否則處理文字回應
+            response = GPT_response_with_history(conversation_history[user_id])
 
-        # 回覆用戶
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+            # 將 GPT 的回應加入對話歷史
+            conversation_history[user_id].append({"role": "assistant", "content": response})
+
+            # 回覆用戶
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
     except Exception as e:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
 
+# === 處理其他事件 ===
 @handler.add(PostbackEvent)
 def handle_postback(event):
     print(event.postback.data)
@@ -108,6 +121,7 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
