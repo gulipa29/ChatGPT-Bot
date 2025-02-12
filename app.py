@@ -17,6 +17,7 @@ line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 # OPENAI API Key
 openai.api_key = os.getenv('OPENAI_API_KEY')
+openai.api_base = "https://free.v36.cm/v1"
 
 # 用來儲存每個用戶的對話歷史
 conversation_history = {}
