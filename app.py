@@ -21,14 +21,15 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
-# Hugging Face API 設定
-HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"  # 使用 Hugging Face Stable Diffusion 模型
-HF_API_TOKEN = os.getenv('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')
+# Hugging Face API Token 和 URL
+HF_API_TOKEN = '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'
+HF_API_URL = 'https://api-inference.huggingface.co/models/your-model'
 
 # 用來儲存每個用戶的對話歷史
 conversation_history = {}
 
 def GPT_response_with_history(messages):
+    # 在對話歷史前加上系統提示，確保 GPT 用繁體中文回答
     system_prompt = {"role": "system", "content": "請用繁體中文回答。"}
     messages_with_system = [system_prompt] + messages
 
@@ -41,24 +42,32 @@ def GPT_response_with_history(messages):
     answer = response['choices'][0]['message']['content'].strip()
     return answer
 
-# 設定圖片生成的 API 請求
 def generate_image(prompt):
     headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
     payload = {"inputs": prompt}
 
-    response = requests.post(HF_API_URL, headers=headers, json=payload)
+    try:
+        response = requests.post(HF_API_URL, headers=headers, json=payload)
 
-    if response.status_code == 200:
-        image_url = response.json()[0]['generated_image_url']
-        return image_url
-    elif response.status_code == 403:
-        # API 限制已達，返回無法生成圖片的提示
-        return "免費額度已達，無法生成圖片。請確認 API 額度或稍後再試。"
-    elif response.status_code == 429:
-        # 過於頻繁的請求，通常是達到限制
-        return "API 呼叫過於頻繁，請稍後再試。"
-    else:
-        return "圖片生成失敗，請稍後再試。"
+        if response.status_code == 200:
+            try:
+                # 確保回應中包含預期的圖片 URL
+                image_url = response.json()[0].get('generated_image_url', '')
+                if image_url:
+                    return image_url
+                else:
+                    return "圖片生成失敗，回應中未找到圖片 URL。"
+            except Exception as e:
+                return f"處理圖片生成回應時發生錯誤: {e}"
+        elif response.status_code == 403:
+            return "免費額度已達，無法生成圖片。請確認 API 額度或稍後再試。"
+        elif response.status_code == 429:
+            return "API 呼叫過於頻繁，請稍後再試。"
+        else:
+            return f"圖片生成失敗，錯誤代碼: {response.status_code}，錯誤訊息: {response.text}"
+
+    except Exception as e:
+        return f"圖片生成失敗，發生錯誤: {e}"
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -84,20 +93,31 @@ def handle_message(event):
         # 將用戶的新訊息加入對話歷史
         conversation_history[user_id].append({"role": "user", "content": msg})
 
-        # 檢查訊息是否包含「畫」這個關鍵字
-        if msg.startswith("畫 "):  # 用戶輸入 "畫" 及其後續文字
-            prompt = msg[1:]  # 去除 "畫 " 字樣，只留下描述內容
-            result = generate_image(prompt)  # 呼叫生成圖片的函數
-            if "http" in result:  # 如果生成了圖片網址
-                line_bot_api.reply_message(event.reply_token, ImageSendMessage(original_content_url=result, preview_image_url=result))
-            else:
-                # 顯示 API 額度問題的提示
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
+        # 檢查是否包含「畫」關鍵字
+        if "畫" in msg:
+            prompt = msg.split("畫", 1)[1].strip()  # 提取畫後面的內容
+            image_url = generate_image(prompt)
+
+            # 日誌輸出圖片 URL 或錯誤訊息
+            app.logger.info(f"生成的圖片 URL: {image_url}")
+
+            if image_url.startswith("http"):  # 成功生成圖片
+                line_bot_api.reply_message(
+                    event.reply_token, 
+                    ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+                )
+            else:  # 發生錯誤
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=image_url))
         else:
-            # 如果不是「畫」關鍵字，進行 GPT 回應
+            # 如果是其他訊息，正常回應 GPT 回答
             response = GPT_response_with_history(conversation_history[user_id])
+
+            # 將 GPT 的回應加入對話歷史
             conversation_history[user_id].append({"role": "assistant", "content": response})
+
+            # 回覆用戶
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+
     except Exception as e:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
@@ -136,4 +156,3 @@ def home():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
