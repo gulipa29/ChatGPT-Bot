@@ -23,7 +23,7 @@ openai.api_base = "https://free.v36.cm/v1"
 
 # Hugging Face API Token 和 URL
 HF_API_TOKEN = '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'
-HF_API_URL = 'https://api-inference.huggingface.co/models/your-model'
+HF_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2'
 
 # 用來儲存每個用戶的對話歷史
 conversation_history = {}
