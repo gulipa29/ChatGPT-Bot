@@ -21,6 +21,10 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
+# HuggingFace API Key for Image Generation
+HUGGINGFACE_API_KEY = os.getenv('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')
+HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"  # Model URL
+
 # 用來儲存每個用戶的對話歷史
 conversation_history = {}
 
@@ -39,13 +43,9 @@ def GPT_response_with_history(messages):
     return answer
 
 def generate_image(prompt):
-    # 使用 Hugging Face 生成圖片
-    API_KEY = "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"  # 使用你的 API 金鑰
-    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"  # 模型 URL
-
     # 設置授權標頭
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
     }
 
     # 設置請求數據
@@ -54,17 +54,16 @@ def generate_image(prompt):
     }
 
     # 發送 POST 請求
-    response = requests.post(API_URL, headers=headers, json=data)
+    response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=data)
 
     # 檢查回應狀態碼和內容
     if response.status_code == 200:
-        # 假設回應內容是圖像，保存為文件
-        image_path = 'generated_image.png'
+        # 保存圖像為文件
+        image_path = 'static/tmp/generated_image.png'
         with open(image_path, 'wb') as f:
             f.write(response.content)
         return image_path
     else:
-        print("錯誤:", response.status_code, response.text)
         return None
 
 @app.route("/callback", methods=['POST'])
@@ -88,29 +87,29 @@ def handle_message(event):
         if user_id not in conversation_history:
             conversation_history[user_id] = []
 
-        # 將用戶的新訊息加入對話歷史
-        conversation_history[user_id].append({"role": "user", "content": msg})
-
-        # 若用戶輸入「畫」，則生成圖片
+        # 如果用戶輸入 "畫" 開頭的消息，生成圖片
         if msg.startswith("畫"):
-            prompt = msg[1:].strip()  # 提取 "畫" 後的內容
+            prompt = msg[1:].strip()  # 取 "畫" 後的文字作為提示
             image_path = generate_image(prompt)
 
             if image_path:
-                # 將圖片發送給用戶
-                with open(image_path, 'rb') as img:
-                    line_bot_api.reply_message(
-                        event.reply_token,
-                        ImageSendMessage(
-                            original_content_url="https://your-server-url/{}".format(image_path),
-                            preview_image_url="https://your-server-url/{}".format(image_path)
-                        )
+                # 圖片生成成功，回覆圖片訊息
+                image_url = f"https://your-server-url/{image_path}"
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    ImageSendMessage(
+                        original_content_url=image_url,
+                        preview_image_url=image_url
                     )
-                os.remove(image_path)  # 生成後刪除圖片文件
+                )
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="圖片生成失敗，請稍後再試。"))
         else:
-            # 否則正常處理文本訊息
+            # 普通文字處理
+            # 將用戶的新訊息加入對話歷史
+            conversation_history[user_id].append({"role": "user", "content": msg})
+
+            # 將對話歷史傳遞給 GPT
             response = GPT_response_with_history(conversation_history[user_id])
 
             # 將 GPT 的回應加入對話歷史
@@ -118,6 +117,7 @@ def handle_message(event):
 
             # 回覆用戶
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+
     except Exception as e:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
