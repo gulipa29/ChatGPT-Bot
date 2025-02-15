@@ -21,10 +21,6 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
-# HuggingFace API Key for Image Generation
-HUGGINGFACE_API_KEY = os.getenv('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')
-HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2"  # Model URL
-
 # 用來儲存每個用戶的對話歷史
 conversation_history = {}
 
@@ -41,30 +37,6 @@ def GPT_response_with_history(messages):
     )
     answer = response['choices'][0]['message']['content'].strip()
     return answer
-
-def generate_image(prompt):
-    # 設置授權標頭
-    headers = {
-        "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
-    }
-
-    # 設置請求數據
-    data = {
-        "inputs": prompt,  # 文字提示
-    }
-
-    # 發送 POST 請求
-    response = requests.post(HUGGINGFACE_API_URL, headers=headers, json=data)
-
-    # 檢查回應狀態碼和內容
-    if response.status_code == 200:
-        # 保存圖像為文件
-        image_path = 'static/tmp/generated_image.png'
-        with open(image_path, 'wb') as f:
-            f.write(response.content)
-        return image_path
-    else:
-        return None
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -87,37 +59,17 @@ def handle_message(event):
         if user_id not in conversation_history:
             conversation_history[user_id] = []
 
-        # 如果用戶輸入 "畫" 開頭的消息，生成圖片
-        if msg.startswith("畫"):
-            prompt = msg[1:].strip()  # 取 "畫" 後的文字作為提示
-            image_path = generate_image(prompt)
+        # 將用戶的新訊息加入對話歷史
+        conversation_history[user_id].append({"role": "user", "content": msg})
 
-            if image_path:
-                # 圖片生成成功，回覆圖片訊息
-                image_url = f"https://your-server-url/{image_path}"
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    ImageSendMessage(
-                        original_content_url=image_url,
-                        preview_image_url=image_url
-                    )
-                )
-            else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="圖片生成失敗，請稍後再試。"))
-        else:
-            # 普通文字處理
-            # 將用戶的新訊息加入對話歷史
-            conversation_history[user_id].append({"role": "user", "content": msg})
+        # 將對話歷史傳遞給 GPT
+        response = GPT_response_with_history(conversation_history[user_id])
 
-            # 將對話歷史傳遞給 GPT
-            response = GPT_response_with_history(conversation_history[user_id])
+        # 將 GPT 的回應加入對話歷史
+        conversation_history[user_id].append({"role": "assistant", "content": response})
 
-            # 將 GPT 的回應加入對話歷史
-            conversation_history[user_id].append({"role": "assistant", "content": response})
-
-            # 回覆用戶
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
-
+        # 回覆用戶
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
     except Exception as e:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
