@@ -21,6 +21,19 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
+def GPT_response(text):
+    # 使用 Chat API 來獲取回應
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",  # 改為適用 Chat API 的模型
+        messages=[{"role": "user", "content": text}],
+        temperature=0.5,
+        max_tokens=500
+    )
+    print(response)
+    # 重組回應
+    answer = response['choices'][0]['message']['content'].strip()
+    return answer
+
 # === API Key 設定 ===
 OPENWEATHER_API_KEY = os.getenv('491e5700c3cc79cccfe5c2435c8a9b94')  # 天氣 API
 AVIATIONSTACK_API_KEY = os.getenv('83caaac8d473b8b58b13fb9a5b0752cd')  # 航班 API
