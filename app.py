@@ -2,7 +2,6 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import *
-import googletrans
 import tempfile, os
 import datetime
 import openai
@@ -16,6 +15,10 @@ from gtts import gTTS
 # 初始化 Flask 应用
 app = Flask(__name__)
 static_tmp_path = os.path.join(os.path.dirname(__file__), 'static', 'tmp')
+
+# 确保静态文件目录存在
+if not os.path.exists(static_tmp_path):
+    os.makedirs(static_tmp_path)
 
 # LINE Bot 配置
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
@@ -40,7 +43,9 @@ user_schedules = {}
 def get_weather(city):
     api_key = "491e5700c3cc79cccfe5c2435c8a9b94"
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&lang=zh_tw&units=metric"
+    print(f"Weather API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
+    print(f"Weather API Response: {response.text}")  # 打印响应内容
     data = response.json()
     if data.get("cod") != 200:
         return "無法獲取天氣資訊。"
@@ -48,13 +53,15 @@ def get_weather(city):
     temp = data["main"]["temp"]
     return f"{city}的天氣：{weather}，溫度：{temp}°C"
 
-# 2. Google 查询（使用 DuckDuckGo 替代）
-def duckduckgo_search(query):
-    url = f"https://api.duckduckgo.com/?q={query}&format=json"
+# 2. Google 查询（使用 Wikipedia API 替代）
+def wikipedia_search(query):
+    url = f"https://zh.wikipedia.org/api/rest_v1/page/summary/{query}"
+    print(f"Wikipedia API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
+    print(f"Wikipedia API Response: {response.text}")  # 打印响应内容
     data = response.json()
-    if "Abstract" in data and data["Abstract"]:
-        return data["Abstract"]
+    if "extract" in data:
+        return data["extract"]
     return "未找到相關結果。"
 
 # 3. 日程管理
@@ -75,13 +82,19 @@ def set_reminder(user_id, reminder_time, message):
 
 # 4. 翻译功能
 def translate_text(text, target_language):
-    translation = translator.translate(text, dest=target_language)
-    return translation.text
+    try:
+        translation = translator.translate(text, dest=target_language)
+        return translation.text
+    except Exception as e:
+        print(f"Translation Error: {e}")
+        return "翻譯失敗，請稍後再試。"
 
 # 5. 生活助手
 def get_nearby_places(location, place_type):
     url = f"https://nominatim.openstreetmap.org/search?q={place_type}+near+{location}&format=json"
+    print(f"Nearby Places API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
+    print(f"Nearby Places API Response: {response.text}")  # 打印响应内容
     data = response.json()
     if not data:
         return "未找到附近地點。"
@@ -91,7 +104,9 @@ def get_nearby_places(location, place_type):
 def get_traffic_info(origin, destination):
     api_key = "5b3ce3597851110001cf62486cd0e71805354473ad65cddb9ca396ef"
     url = f"https://api.openrouteservice.org/v2/directions/driving-car?api_key={api_key}&start={origin}&end={destination}"
+    print(f"Traffic API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
+    print(f"Traffic API Response: {response.text}")  # 打印响应内容
     data = response.json()
     if "routes" not in data:
         return "無法獲取交通資訊。"
@@ -101,7 +116,9 @@ def get_traffic_info(origin, destination):
 def get_flight_info(flight_number):
     api_key = "83caaac8d473b8b58b13fb9a5b0752cd"
     url = f"http://api.aviationstack.com/v1/flights?access_key={api_key}&flight_iata={flight_number}"
+    print(f"Flight API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
+    print(f"Flight API Response: {response.text}")  # 打印响应内容
     data = response.json()
     if "data" not in data:
         return "無法獲取航班資訊。"
@@ -113,11 +130,16 @@ def get_flight_info(flight_number):
 
 # 6. 即时口译
 def translate_and_speak(text, target_language):
-    translated_text = translate_text(text, target_language)
-    tts = gTTS(translated_text, lang=target_language)
-    audio_file = os.path.join(static_tmp_path, "translation.mp3")
-    tts.save(audio_file)
-    return translated_text, audio_file
+    try:
+        translated_text = translate_text(text, target_language)
+        tts = gTTS(translated_text, lang=target_language)
+        audio_file = os.path.join(static_tmp_path, "translation.mp3")
+        tts.save(audio_file)
+        print(f"Audio file saved: {audio_file}")  # 打印语音文件路径
+        return translated_text, audio_file
+    except Exception as e:
+        print(f"Translation and Speak Error: {e}")
+        return "語音生成失敗，請稍後再試。", None
 
 # 7. GPT 对话
 def GPT_response_with_history(messages):
@@ -158,10 +180,10 @@ def handle_message(event):
             weather_info = get_weather(city)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=weather_info))
 
-        # Google 查询
+        # Google 查询（使用 Wikipedia API）
         elif msg.startswith("查詢 "):
             query = msg[3:].strip()
-            search_result = duckduckgo_search(query)
+            search_result = wikipedia_search(query)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=search_result))
 
         # 翻译功能
@@ -220,11 +242,14 @@ def handle_message(event):
             if len(parts) == 2:
                 text, target_language = parts[0].strip(), parts[1].strip()
                 translated_text, audio_file = translate_and_speak(text, target_language)
-                # 发送翻译后的文字和语音
-                line_bot_api.reply_message(
-                    event.reply_token,
-                    [TextSendMessage(text=translated_text), AudioSendMessage(original_content_url=audio_file, duration=1000)]
-                )
+                if audio_file:
+                    # 发送翻译后的文字和语音
+                    line_bot_api.reply_message(
+                        event.reply_token,
+                        [TextSendMessage(text=translated_text), AudioSendMessage(original_content_url=audio_file, duration=1000)]
+                    )
+                else:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated_text))
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：翻譯 [文字] 到 [語言]"))
 
