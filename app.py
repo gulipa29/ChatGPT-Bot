@@ -36,8 +36,8 @@ def GPT_response(text):
 
 # === API Key 設定 ===
 OPENWEATHER_API_KEY = os.getenv('491e5700c3cc79cccfe5c2435c8a9b94')  # 天氣 API
-AVIATIONSTACK_API_KEY = os.getenv('83caaac8d473b8b58b13fb9a5b0752cd')  # 航班 API
-HF_API_KEY = os.getenv('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')  # 文本生圖 API
+AVIATIONSTACK_API_KEY = os.getenv('96e60ba1d1be1bc54d624788433ed993')  # 航班 API
+HF_API_KEY = os.getenv('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')  # 文本生圖 API
 
 # === 存儲用戶請求時間（用來限制天氣查詢頻率）===
 weather_request_time = {}
@@ -133,7 +133,7 @@ def get_flight_info(flight_number):
 def generate_image(description):
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     response = requests.post(
-        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-v1-5",
+        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2",
         headers=headers,
         json={"inputs": description}
     )
@@ -200,17 +200,23 @@ threading.Thread(target=keep_alive, daemon=True).start()
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    # get X-Line-Signature header value
+    # Get the signature header
     signature = request.headers['X-Line-Signature']
-    # get request body as text
+    
+    # Get the request body as text
     body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
-    # handle webhook body
+    
+    app.logger.info(f"Request body: {body}")
+    
     try:
+        # Process the webhook body
         handler.handle(body, signature)
     except InvalidSignatureError:
+        # If the signature is invalid, return 400 error
         abort(400)
+    
     return 'OK'
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
