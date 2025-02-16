@@ -196,7 +196,7 @@ def handle_message(event):
         # 生活助手
         elif msg.startswith("附近推薦 "):
             place_type = msg[5:].strip()
-            location = "桃園"  # 可以改为从用户输入中获取位置
+            location = "台北"  # 可以改为从用户输入中获取位置
             result = get_nearby_places(location, place_type)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
 
