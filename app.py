@@ -10,9 +10,6 @@ import traceback
 import requests
 import threading
 from deep_translator import GoogleTranslator
-from openweather import OpenWeatherMap  # 假设你已经封装了 OpenWeatherMap API
-from yahoo_news import YahooNews  # 假设你已经封装了 Yahoo 新闻 API
-from aviationstack import AviationStack  # 假设你已经封装了 AviationStack API
 
 app = Flask(__name__)
 static_tmp_path = os.path.join(os.path.dirname(__file__), 'static', 'tmp')
