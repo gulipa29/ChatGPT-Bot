@@ -9,6 +9,7 @@ import requests
 import traceback
 from googletrans import Translator
 import threading
+import datetime
 
 app = Flask(__name__)
 
@@ -20,52 +21,57 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
+def GPT_response(text):
+    # 使用 Chat API 來獲取回應
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",  # 改為適用 Chat API 的模型
+        messages=[{"role": "user", "content": text}],
+        temperature=0.5,
+        max_tokens=500
+    )
+    print(response)
+    # 重組回應
+    answer = response['choices'][0]['message']['content'].strip()
+    return answer
+
 # === API Key 設定 ===
 OPENWEATHER_API_KEY = os.getenv('491e5700c3cc79cccfe5c2435c8a9b94')  # 天氣 API
 AVIATIONSTACK_API_KEY = os.getenv('83caaac8d473b8b58b13fb9a5b0752cd')  # 航班 API
 HF_API_KEY = os.getenv('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')  # 文本生圖 API
 
-# === 存儲用戶請求時間（限制天氣查詢頻率）===
+# === 存儲用戶請求時間（用來限制天氣查詢頻率）===
 weather_request_time = {}
 
-# === 儲存對話歷史（每個使用者最多存 10 則）===
+# === GPT 對話歷史 ===
 conversation_history = {}
 
 translator = Translator()
 
-# === GPT 回應（記錄對話歷史）===
+
+# === GPT 回應 ===
 def GPT_response_with_history(user_id, msg):
     if user_id not in conversation_history:
         conversation_history[user_id] = []
 
-    # 加入使用者訊息
     conversation_history[user_id].append({"role": "user", "content": msg})
 
     system_prompt = {"role": "system", "content": "請用繁體中文回答。"}
     messages_with_system = [system_prompt] + conversation_history[user_id]
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=messages_with_system,
-            temperature=0.5,
-            max_tokens=500
-        )
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=messages_with_system,
+        temperature=0.5,
+        max_tokens=500
+    )
 
-        # 取得 AI 回應
-        answer = response['choices'][0]['message']['content'].strip()
-        conversation_history[user_id].append({"role": "assistant", "content": answer})
+    answer = response['choices'][0]['message']['content'].strip()
+    conversation_history[user_id].append({"role": "assistant", "content": answer})
 
-        # 限制對話歷史長度（最多存 10 則，避免記憶體爆掉）
-        if len(conversation_history[user_id]) > 10:
-            conversation_history[user_id] = conversation_history[user_id][-10:]
+    return answer
 
-        return answer
-    except Exception as e:
-        print(f"GPT API 錯誤: {e}")
-        return "❌ GPT 無法回應，請稍後再試"
 
-# === 天氣查詢（翻譯城市名稱）===
+# === 天氣查詢 ===
 def get_weather(city, user_id):
     current_time = time.time()
 
@@ -91,38 +97,50 @@ def get_weather(city, user_id):
 
     return f"🌤 {city} 天氣\n🌡 溫度: {temp}°C\n💧 濕度: {humidity}%\n💨 風速: {wind_speed}m/s\n☁ 天氣: {weather}"
 
-# === 新聞查詢（Yahoo 奇摩）===
+
+# === 新聞查詢 ===
 def get_news(keyword):
     search_url = f"https://tw.news.yahoo.com/search?p={keyword}"
     return f"🔍 這裡是 Yahoo 奇摩的搜尋結果: {search_url}"
 
-# === 航班查詢（AviationStack API）===
+
+# === 航班查詢 ===
 def get_flight_info(flight_number):
     url = f"http://api.aviationstack.com/v1/flights?access_key={AVIATIONSTACK_API_KEY}&flight_iata={flight_number}"
-    response = requests.get(url).json()
+    response = requests.get(url)
 
-    if "data" not in response or not response["data"]:
-        return "找不到該航班資訊，請確認輸入是否正確。"
+    # 測試 API 回應
+    if response.status_code == 200:
+        print(response.json())  # 顯示 API 回應
 
-    flight = response["data"][0]
-    airline = flight["airline"]["name"]
-    departure = flight["departure"]["airport"]
-    arrival = flight["arrival"]["airport"]
-    status = flight["flight_status"]
+    if response.status_code == 200:
+        data = response.json()
+        if "data" not in data or not data["data"]:
+            return "找不到該航班資訊，請確認輸入是否正確。"
 
-    return f"✈ 航班資訊\n🛫 航空公司: {airline}\n📍 出發機場: {departure}\n🎯 目的機場: {arrival}\n🚦 狀態: {status}"
+        flight = data["data"][0]
+        airline = flight["airline"]["name"]
+        departure = flight["departure"]["airport"]
+        arrival = flight["arrival"]["airport"]
+        status = flight["flight_status"]
 
-# === 文本生圖（Hugging Face API）===
+        return f"✈ 航班資訊\n🛫 航空公司: {airline}\n📍 出發機場: {departure}\n🎯 目的機場: {arrival}\n🚦 狀態: {status}"
+
+    return f"無法查詢航班，錯誤代碼: {response.status_code}"
+
+
+# === 文本生圖 ===
 def generate_image(description):
     headers = {"Authorization": f"Bearer {HF_API_KEY}"}
     response = requests.post(
-        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2",
+        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-v1-5",
         headers=headers,
         json={"inputs": description}
     )
     if response.status_code == 200:
-        return response.json()["image_url"]
-    return "圖片生成失敗，請稍後再試。"
+        return response.json().get("image_url", "圖片生成失敗")
+    return f"圖片生成失敗，錯誤代碼: {response.status_code}"
+
 
 # === 訊息處理 ===
 @handler.add(MessageEvent, message=TextMessage)
@@ -157,7 +175,6 @@ def handle_message(event):
             response = "待開發功能，開發完畢即可使用"
 
         else:
-            # 🌟 **這裡加入 GPT 對話功能**
             response = GPT_response_with_history(user_id, msg)
 
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
@@ -165,6 +182,7 @@ def handle_message(event):
     except Exception as e:
         print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
+
 
 # === Keep Alive ===
 def keep_alive():
@@ -176,21 +194,15 @@ def keep_alive():
             print(f"Keep Alive 失敗: {e}")
         time.sleep(40)
 
+
 threading.Thread(target=keep_alive, daemon=True).start()
 
-@app.route("/callback", methods=["POST"])
-def callback():
-    signature = request.headers["X-Line-Signature"]
-    body = request.get_data(as_text=True)
 
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
+@app.route("/")
+def home():
+    return "Server is running!", 200
 
-    return "OK"
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
