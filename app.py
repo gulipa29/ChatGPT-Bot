@@ -78,7 +78,7 @@ def set_reminder(user_id, reminder_time, message):
     if delay > 0:
         threading.Timer(delay, remind).start()
         return "提醒已設置。"
-    return "無效的時間。"
+    return "無效的時間，請確保設定時間在未來。"
 
 # 4. 翻译功能
 def translate_text(text, target_language):
@@ -92,34 +92,6 @@ def translate_text(text, target_language):
         return "翻譯失敗，請稍後再試。"
 
 # 5. 生活助手
-def geocode_location(location):
-    url = f"https://nominatim.openstreetmap.org/search?q={location}&format=json"
-    print(f"Geocode API Request URL: {url}")  # 打印请求 URL
-    response = requests.get(url)
-    print(f"Geocode API Response: {response.text}")  # 打印响应内容
-    data = response.json()
-    if not data:
-        return None
-    return float(data[0]["lat"]), float(data[0]["lon"])
-
-def get_traffic_info(origin, destination):
-    # 将地名转换为经纬度
-    origin_coords = geocode_location(origin)
-    destination_coords = geocode_location(destination)
-    if not origin_coords or not destination_coords:
-        return "無法解析地點名稱。"
-
-    api_key = "5b3ce3597851110001cf62486cd0e71805354473ad65cddb9ca396ef"
-    url = f"https://api.openrouteservice.org/v2/directions/driving-car?api_key={api_key}&start={origin_coords[1]},{origin_coords[0]}&end={destination_coords[1]},{destination_coords[0]}"
-    print(f"Traffic API Request URL: {url}")  # 打印请求 URL
-    response = requests.get(url)
-    print(f"Traffic API Response: {response.text}")  # 打印响应内容
-    data = response.json()
-    if "routes" not in data:
-        return "無法獲取交通資訊。"
-    duration = data["routes"][0]["segments"][0]["duration"] / 60  # 转换为分钟
-    return f"預計行程時間：{duration:.1f} 分鐘"
-
 def get_flight_info(flight_number):
     api_key = "83caaac8d473b8b58b13fb9a5b0752cd"
     url = f"http://api.aviationstack.com/v1/flights?access_key={api_key}&flight_iata={flight_number}"
@@ -143,7 +115,9 @@ def translate_and_speak(text, target_language):
         audio_file = os.path.join(static_tmp_path, "translation.mp3")
         tts.save(audio_file)
         print(f"Audio file saved: {audio_file}")  # 打印语音文件路径
-        return translated_text, audio_file
+        # 这里上传音频文件到一个公开 URL 或使用现有的公共服务，简化为URL返回
+        public_url = f"https://yourserver.com/{audio_file}"  # 你需要在自己的伺服器上处理该部分
+        return translated_text, public_url
     except Exception as e:
         print(f"Translation and Speak Error: {e}")
         return "語音生成失敗，請稍後再試。", None
@@ -222,75 +196,39 @@ def handle_message(event):
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：設置提醒 [時間] [訊息]"))
 
-        # 生活助手
-        elif msg.startswith("附近推薦 "):
-            place_type = msg[5:].strip()
-            location = "台北"  # 可以改为从用户输入中获取位置
-            result = get_nearby_places(location, place_type)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
-
-        elif msg.startswith("交通訊息 "):
+        # 即時口譯
+        elif msg.startswith("語音翻譯 "):
             parts = msg[5:].split("到")
             if len(parts) == 2:
-                origin, destination = parts[0].strip(), parts[1].strip()
-                result = get_traffic_info(origin, destination)
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
-            else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：交通訊息 [起點] 到 [終點]"))
-
-        elif msg.startswith("航班查詢 "):
-            flight_number = msg[5:].strip()
-            result = get_flight_info(flight_number)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
-
-        # 即时口译
-        elif msg.startswith("翻譯 "):
-            parts = msg[3:].split("到")
-            if len(parts) == 2:
                 text, target_language = parts[0].strip(), parts[1].strip()
-                translated_text, audio_file = translate_and_speak(text, target_language)
-                if audio_file:
-                    # 发送翻译后的文字和语音
+                translated_text, audio_url = translate_and_speak(text, target_language)
+                if audio_url:
                     line_bot_api.reply_message(
-                        event.reply_token,
-                        [TextSendMessage(text=translated_text), AudioSendMessage(original_content_url=audio_file, duration=1000)]
+                        event.reply_token, 
+                        [TextSendMessage(text=translated_text), AudioSendMessage(original_content_url=audio_url, duration=24000)]
                     )
                 else:
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated_text))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="語音生成失敗，請稍後再試。"))
             else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：翻譯 [文字] 到 [語言]"))
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：語音翻譯 [文字] 到 [語言]"))
 
-        # 其他功能（GPT 对话）
+        # GPT 對話
         else:
             if user_id not in conversation_history:
                 conversation_history[user_id] = []
+
             conversation_history[user_id].append({"role": "user", "content": msg})
             response = GPT_response_with_history(conversation_history[user_id])
             conversation_history[user_id].append({"role": "assistant", "content": response})
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(traceback.format_exc())
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
-
-# === Keep Alive 功能 ===
-def keep_alive():
-    while True:
-        try:
-            url = "https://chatgpt-bot-uzvv.onrender.com/"  # 替換為你的 Render 伺服器網址
-            response = requests.get(url)
-            print(f"Keep Alive: {response.status_code}")
-        except Exception as e:
-            print(f"Keep Alive 失敗: {e}")
-        time.sleep(40)  # 每 40 秒發送一次請求
-
-# 啟動 Keep Alive 在獨立執行緒中運行
-threading.Thread(target=keep_alive, daemon=True).start()
 
 @app.route("/")
 def home():
-    return "Server is running!", 200  # 讓 Render 伺服器知道它還活著
+    return "Server is running!", 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000)
