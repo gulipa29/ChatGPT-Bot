@@ -201,24 +201,10 @@ def keep_alive():
 threading.Thread(target=keep_alive, daemon=True).start()
 
 
-@app.route("/callback", methods=['POST'])
-def callback():
-    # Get the signature header
-    signature = request.headers['X-Line-Signature']
-    
-    # Get the request body as text
-    body = request.get_data(as_text=True)
-    
-    app.logger.info(f"Request body: {body}")
-    
-    try:
-        # Process the webhook body
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        # If the signature is invalid, return 400 error
-        abort(400)
-    
-    return 'OK'
+@app.route("/")
+def home():
+    return "Server is running!", 200
+
 
 
 if __name__ == "__main__":
