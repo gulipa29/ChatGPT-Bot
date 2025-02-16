@@ -2,6 +2,7 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import *
+from deep_translator import GoogleTranslator
 import os
 import time
 import openai
@@ -81,8 +82,11 @@ def get_weather(city, user_id):
 
     weather_request_time[user_id] = current_time  # 更新請求時間
 
-    # 翻譯地名
-    translated_city = translator.translate(city, dest="en").text
+    # 使用 deep-translator 進行翻譯
+    try:
+        translated_city = GoogleTranslator(source='auto', target='en').translate(city)
+    except Exception as e:
+        return f"翻譯失敗：{str(e)}"
 
     url = f"http://api.openweathermap.org/data/2.5/weather?q={translated_city}&appid={OPENWEATHER_API_KEY}&lang=zh_tw&units=metric"
     response = requests.get(url).json()
@@ -96,7 +100,6 @@ def get_weather(city, user_id):
     wind_speed = response["wind"]["speed"]
 
     return f"🌤 {city} 天氣\n🌡 溫度: {temp}°C\n💧 濕度: {humidity}%\n💨 風速: {wind_speed}m/s\n☁ 天氣: {weather}"
-
 
 # === 新聞查詢 ===
 def get_news(keyword):
