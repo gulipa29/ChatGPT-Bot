@@ -25,7 +25,7 @@ line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
 # OpenAI 配置
-openai.api_key = os.getenv('OPENAI_API_KEY')
+openai.api_key = os.getenv('OPENAI_API_KEY'))
 openai.api_base = "https://free.v36.cm/v1"
 
 # 翻译器初始化
@@ -84,26 +84,33 @@ def set_reminder(user_id, reminder_time, message):
 def translate_text(text, target_language):
     try:
         translation = translator.translate(text, dest=target_language)
+        if translation is None:
+            return "翻譯失敗，請稍後再試。"
         return translation.text
     except Exception as e:
         print(f"Translation Error: {e}")
         return "翻譯失敗，請稍後再試。"
 
 # 5. 生活助手
-def get_nearby_places(location, place_type):
-    url = f"https://nominatim.openstreetmap.org/search?q={place_type}+near+{location}&format=json"
-    print(f"Nearby Places API Request URL: {url}")  # 打印请求 URL
+def geocode_location(location):
+    url = f"https://nominatim.openstreetmap.org/search?q={location}&format=json"
+    print(f"Geocode API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
-    print(f"Nearby Places API Response: {response.text}")  # 打印响应内容
+    print(f"Geocode API Response: {response.text}")  # 打印响应内容
     data = response.json()
     if not data:
-        return "未找到附近地點。"
-    places = [place["display_name"] for place in data[:5]]  # 取前 5 个结果
-    return "附近地點：" + ", ".join(places)
+        return None
+    return float(data[0]["lat"]), float(data[0]["lon"])
 
 def get_traffic_info(origin, destination):
+    # 将地名转换为经纬度
+    origin_coords = geocode_location(origin)
+    destination_coords = geocode_location(destination)
+    if not origin_coords or not destination_coords:
+        return "無法解析地點名稱。"
+
     api_key = "5b3ce3597851110001cf62486cd0e71805354473ad65cddb9ca396ef"
-    url = f"https://api.openrouteservice.org/v2/directions/driving-car?api_key={api_key}&start={origin}&end={destination}"
+    url = f"https://api.openrouteservice.org/v2/directions/driving-car?api_key={api_key}&start={origin_coords[1]},{origin_coords[0]}&end={destination_coords[1]},{destination_coords[0]}"
     print(f"Traffic API Request URL: {url}")  # 打印请求 URL
     response = requests.get(url)
     print(f"Traffic API Response: {response.text}")  # 打印响应内容
