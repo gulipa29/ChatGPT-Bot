@@ -2,210 +2,195 @@ from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import *
-from deep_translator import GoogleTranslator
-import os
-import time
-import openai
-import requests
-import traceback
-from googletrans import Translator
-import threading
+import tempfile, os
 import datetime
+import openai
+import time
+import traceback
+import requests
+import threading
+from deep_translator import GoogleTranslator
+from openweather import OpenWeatherMap  # 假设你已经封装了 OpenWeatherMap API
+from yahoo_news import YahooNews  # 假设你已经封装了 Yahoo 新闻 API
+from aviationstack import AviationStack  # 假设你已经封装了 AviationStack API
 
 app = Flask(__name__)
+static_tmp_path = os.path.join(os.path.dirname(__file__), 'static', 'tmp')
 
-# === LINE Bot 設定 ===
+# Channel Access Token
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
+# Channel Secret
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
-
-# === OpenAI GPT 設定 ===
+# OPENAI API Key
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.api_base = "https://free.v36.cm/v1"
 
-def GPT_response(text):
-    # 使用 Chat API 來獲取回應
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",  # 改為適用 Chat API 的模型
-        messages=[{"role": "user", "content": text}],
-        temperature=0.5,
-        max_tokens=500
-    )
-    print(response)
-    # 重組回應
-    answer = response['choices'][0]['message']['content'].strip()
-    return answer
+# 初始化 API 客户端
+weather_api = OpenWeatherMap(api_key=os.getenv('491e5700c3cc79cccfe5c2435c8a9b94'))
+news_api = YahooNews()
+aviation_api = AviationStack(api_key=os.getenv('96e60ba1d1be1bc54d624788433ed993'))
 
-# === API Key 設定 ===
-OPENWEATHER_API_KEY = os.getenv('491e5700c3cc79cccfe5c2435c8a9b94')  # 天氣 API
-AVIATIONSTACK_API_KEY = os.getenv('96e60ba1d1be1bc54d624788433ed993')  # 航班 API
-HF_API_KEY = os.getenv('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')  # 文本生圖 API
-
-# === 存儲用戶請求時間（用來限制天氣查詢頻率）===
-weather_request_time = {}
-
-# === GPT 對話歷史 ===
+# 用来储存每个用户的对话历史
 conversation_history = {}
 
-translator = Translator()
+# 用来储存每个用户最后一次查询天气的时间
+user_last_weather_query = {}
 
-
-# === GPT 回應 ===
-def GPT_response_with_history(user_id, msg):
-    if user_id not in conversation_history:
-        conversation_history[user_id] = []
-
-    conversation_history[user_id].append({"role": "user", "content": msg})
-
-    system_prompt = {"role": "system", "content": "請用繁體中文回答。"}
-    messages_with_system = [system_prompt] + conversation_history[user_id]
+def GPT_response_with_history(messages):
+    # 在对话历史前加上系统提示，确保 GPT 用繁体中文回答
+    system_prompt = {"role": "system", "content": "请用繁体中文回答。"}
+    messages_with_system = [system_prompt] + messages
 
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
+        model="gpt-4o-mini",  # 使用 GPT-4 模型
         messages=messages_with_system,
         temperature=0.5,
         max_tokens=500
     )
-
     answer = response['choices'][0]['message']['content'].strip()
-    conversation_history[user_id].append({"role": "assistant", "content": answer})
-
     return answer
 
+def translate_to_english(text):
+    """将非英文地名翻译成英文"""
+    translator = GoogleTranslator(source='auto', target='en')
+    return translator.translate(text)
 
-# === 天氣查詢 ===
-def get_weather(city, user_id):
-    current_time = time.time()
-
-    # 檢查是否在 1 分鐘內查詢過
-    if user_id in weather_request_time and current_time - weather_request_time[user_id] < 60:
-        return "不好意思，每分鐘只能請求一次，不然太燒錢了 QQ"
-
-    weather_request_time[user_id] = current_time  # 更新請求時間
-
-    # 使用 deep-translator 進行翻譯
+def get_weather(location):
+    """查询天气"""
     try:
-        translated_city = GoogleTranslator(source='auto', target='en').translate(city)
+        weather_data = weather_api.get_weather(location)
+        return f"{location} 的天气：{weather_data['description']}，温度：{weather_data['temp']}°C"
     except Exception as e:
-        return f"翻譯失敗：{str(e)}"
+        return f"无法获取 {location} 的天气信息，请稍后再试。"
 
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={translated_city}&appid={OPENWEATHER_API_KEY}&lang=zh_tw&units=metric"
-    response = requests.get(url).json()
+def get_news(query):
+    """查询新闻"""
+    try:
+        news_results = news_api.search(query)
+        if news_results:
+            return "\n".join([f"{news['title']}: {news['link']}" for news in news_results[:3]])
+        else:
+            return f"没有找到关于 {query} 的新闻。"
+    except Exception as e:
+        return f"无法获取新闻，请稍后再试。"
 
-    if response.get("cod") != 200:
-        return "找不到該地區的天氣資訊，請確認輸入是否正確。"
-
-    weather = response["weather"][0]["description"]
-    temp = response["main"]["temp"]
-    humidity = response["main"]["humidity"]
-    wind_speed = response["wind"]["speed"]
-
-    return f"🌤 {city} 天氣\n🌡 溫度: {temp}°C\n💧 濕度: {humidity}%\n💨 風速: {wind_speed}m/s\n☁ 天氣: {weather}"
-
-# === 新聞查詢 ===
-def get_news(keyword):
-    search_url = f"https://tw.news.yahoo.com/search?p={keyword}"
-    return f"🔍 這裡是 Yahoo 奇摩的搜尋結果: {search_url}"
-
-
-# === 航班查詢 ===
 def get_flight_info(flight_number):
-    url = f"http://api.aviationstack.com/v1/flights?access_key={AVIATIONSTACK_API_KEY}&flight_iata={flight_number}"
-    response = requests.get(url)
+    """查询航班信息"""
+    try:
+        flight_data = aviation_api.get_flight_info(flight_number)
+        return f"航班 {flight_number} 的信息：{flight_data['status']}，起飞时间：{flight_data['departure']}"
+    except Exception as e:
+        return f"无法获取航班 {flight_number} 的信息，请稍后再试。"
 
-    # 測試 API 回應
-    if response.status_code == 200:
-        print(response.json())  # 顯示 API 回應
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+    app.logger.info("Request body: " + body)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return 'OK'
 
-    if response.status_code == 200:
-        data = response.json()
-        if "data" not in data or not data["data"]:
-            return "找不到該航班資訊，請確認輸入是否正確。"
-
-        flight = data["data"][0]
-        airline = flight["airline"]["name"]
-        departure = flight["departure"]["airport"]
-        arrival = flight["arrival"]["airport"]
-        status = flight["flight_status"]
-
-        return f"✈ 航班資訊\n🛫 航空公司: {airline}\n📍 出發機場: {departure}\n🎯 目的機場: {arrival}\n🚦 狀態: {status}"
-
-    return f"無法查詢航班，錯誤代碼: {response.status_code}"
-
-
-# === 文本生圖 ===
-def generate_image(description):
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    response = requests.post(
-        "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2",
-        headers=headers,
-        json={"inputs": description}
-    )
-    if response.status_code == 200:
-        return response.json().get("image_url", "圖片生成失敗")
-    return f"圖片生成失敗，錯誤代碼: {response.status_code}"
-
-
-# === 訊息處理 ===
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_id = event.source.user_id
+    user_id = event.source.user_id  # 获取用户的 LINE 用户 ID
     msg = event.message.text
 
     try:
-        if msg.startswith("天氣"):
-            city = msg.replace("天氣", "").strip()
-            response = get_weather(city, user_id)
+        # 初始化用户的对话历史（如果尚未存在）
+        if user_id not in conversation_history:
+            conversation_history[user_id] = []
 
-        elif msg.startswith("新聞"):
-            keyword = msg.replace("新聞", "").strip()
-            response = get_news(keyword)
+        # 处理天气查询
+        if msg.startswith("天气"):
+            location = msg[2:].strip()
+            if location:
+                # 检查用户是否在一分钟内重复查询
+                last_query_time = user_last_weather_query.get(user_id, 0)
+                current_time = time.time()
+                if current_time - last_query_time < 60:
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="不好意思，每分钟只能请求一次，不然太烧钱了 QQ"))
+                    return
+                user_last_weather_query[user_id] = current_time
 
-        elif msg.startswith("班機查詢"):
-            flight_number = msg.replace("班機查詢", "").strip()
-            response = get_flight_info(flight_number)
+                # 翻译地名
+                location_en = translate_to_english(location)
+                weather_info = get_weather(location_en)
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=weather_info))
+            else:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="请输入有效的地名。"))
 
-        elif msg.startswith("畫"):
-            description = msg.replace("畫", "").strip()
-            response = generate_image(description)
+        # 处理新闻查询
+        elif msg.startswith("新闻"):
+            query = msg[2:].strip()
+            if query:
+                news_info = get_news(query)
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=news_info))
+            else:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="请输入有效的查询内容。"))
 
-        elif msg.startswith("提醒"):
-            response = "🔔 提醒功能開發中..."
+        # 处理航班查询
+        elif msg.startswith("班机查询"):
+            flight_number = msg[4:].strip()
+            if flight_number:
+                flight_info = get_flight_info(flight_number)
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=flight_info))
+            else:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="请输入有效的航班编号。"))
 
-        elif msg.startswith("附近"):
-            response = "待開發功能，開發完畢即可使用"
+        # 处理待开发功能
+        elif msg.startswith("附近") or msg.startswith("画") or msg.startswith("提醒"):
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="待开发功能，开发完毕即可使用"))
 
-        elif msg.startswith("http") or "youtube.com" in msg or "youtu.be" in msg:
-            response = "待開發功能，開發完畢即可使用"
-
+        # 处理一般对话
         else:
-            response = GPT_response_with_history(user_id, msg)
+            # 将用户的新消息加入对话历史
+            conversation_history[user_id].append({"role": "user", "content": msg})
 
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
+            # 将对话历史传递给 GPT
+            response = GPT_response_with_history(conversation_history[user_id])
 
+            # 将 GPT 的回应加入对话历史
+            conversation_history[user_id].append({"role": "assistant", "content": response})
+
+            # 回复用户
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=response))
     except Exception as e:
         print(traceback.format_exc())
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="發生錯誤，請稍後再試。"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="发生错误，请稍后再试。"))
 
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    print(event.postback.data)
 
-# === Keep Alive ===
+@handler.add(MemberJoinedEvent)
+def welcome(event):
+    uid = event.joined.members[0].user_id
+    gid = event.source.group_id
+    profile = line_bot_api.get_group_member_profile(gid, uid)
+    name = profile.display_name
+    message = TextSendMessage(text=f'{name}欢迎加入')
+    line_bot_api.reply_message(event.reply_token, message)
+
+# === Keep Alive 功能 ===
 def keep_alive():
     while True:
         try:
-            url = "https://chatgpt-bot-uzvv.onrender.com/"
-            requests.get(url)
+            url = "https://chatgpt-bot-uzvv.onrender.com/"  # 请替换为你的 Render 服务器网址
+            response = requests.get(url)
+            print(f"Keep Alive: {response.status_code}")
         except Exception as e:
-            print(f"Keep Alive 失敗: {e}")
-        time.sleep(40)
+            print(f"Keep Alive 失败: {e}")
+        time.sleep(40)  # 每 40 秒发送一次请求
 
-
+# 启动 Keep Alive 在独立线程中运行
 threading.Thread(target=keep_alive, daemon=True).start()
-
 
 @app.route("/")
 def home():
-    return "Server is running!", 200
-
-
+    return "Server is running!", 200  # 让 Render 服务器知道它还活着
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
