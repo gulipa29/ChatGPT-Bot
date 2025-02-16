@@ -180,7 +180,7 @@ def handle_message(event):
             result = add_schedule(user_id, schedule)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
 
-        elif msg.startswith("设置提醒 "):
+        elif msg.startswith("設置提醒 "):
             parts = msg[5:].split(" ")
             if len(parts) >= 2:
                 time_str, message = parts[0], " ".join(parts[1:])
@@ -189,33 +189,33 @@ def handle_message(event):
                     result = set_reminder(user_id, reminder_time, message)
                     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
                 except ValueError:
-                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="時間格式錯誤，請使用：设置提醒 [時間] [訊息]"))
+                    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="時間格式錯誤，請使用：設置提醒 [時間] [訊息]"))
             else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：设置提醒 [時間] [訊息]"))
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：設置提醒 [時間] [訊息]"))
 
         # 生活助手
-        elif msg.startswith("附近推荐 "):
+        elif msg.startswith("附近推薦 "):
             place_type = msg[5:].strip()
-            location = "台北"  # 可以改为从用户输入中获取位置
+            location = "桃園"  # 可以改为从用户输入中获取位置
             result = get_nearby_places(location, place_type)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
 
-        elif msg.startswith("交通信息 "):
+        elif msg.startswith("交通訊息 "):
             parts = msg[5:].split("到")
             if len(parts) == 2:
                 origin, destination = parts[0].strip(), parts[1].strip()
                 result = get_traffic_info(origin, destination)
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
             else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：交通信息 [起點] 到 [終點]"))
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：交通訊息 [起點] 到 [終點]"))
 
-        elif msg.startswith("航班查询 "):
+        elif msg.startswith("航班查詢 "):
             flight_number = msg[5:].strip()
             result = get_flight_info(flight_number)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
 
         # 即时口译
-        elif msg.startswith("翻译 "):
+        elif msg.startswith("翻譯 "):
             parts = msg[3:].split("到")
             if len(parts) == 2:
                 text, target_language = parts[0].strip(), parts[1].strip()
@@ -226,7 +226,7 @@ def handle_message(event):
                     [TextSendMessage(text=translated_text), AudioSendMessage(original_content_url=audio_file, duration=1000)]
                 )
             else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：翻译 [文字] 到 [語言]"))
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="格式錯誤，請使用：翻譯 [文字] 到 [語言]"))
 
         # 其他功能（GPT 对话）
         else:
