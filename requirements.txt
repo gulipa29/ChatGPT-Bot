@@ -7,3 +7,4 @@ gtts
 deep_translator
 openweather
 yahoo_news
+aviationstack
