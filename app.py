@@ -109,15 +109,13 @@ def handle_message(event):
         if user_id not in conversation_history:
             conversation_history[user_id] = []
         conversation_history[user_id].append({"role": "user", "content": user_msg})
-        
-        # 取得 AI 回應
-        gpt_response = get_ai_response(conversation_history[user_id])
-        
-        # 判斷是否需要搜尋
-        if not gpt_response or '查詢最新資訊' in gpt_response:
-            search_query = user_msg
+
+        # 判斷是否為查詢指令
+        if user_msg.startswith("查詢"):
+            # 提取查詢關鍵字
+            search_query = user_msg[2:].strip()  # 去除"查詢"兩字
             
-            # 先嘗試 DuckDuckGo
+            # 嘗試搜尋 DuckDuckGo
             search_result = get_duckduckgo_summary(search_query)
             
             # 次選 Yahoo 台灣
@@ -133,8 +131,14 @@ def handle_message(event):
             # 保留搜尋結果在對話歷史
             conversation_history[user_id].append({"role": "assistant", "content": final_response})
         else:
-            final_response = gpt_response
-            conversation_history[user_id].append({"role": "assistant", "content": final_response})
+            # 如果不是查詢指令，則繼續處理 GPT 回應
+            gpt_response = get_ai_response(conversation_history[user_id])
+            
+            if not gpt_response or '查詢最新資訊' in gpt_response:
+                final_response = "如果您想查詢最新資訊，請輸入「查詢【查詢關鍵字】」。"
+            else:
+                final_response = gpt_response
+                conversation_history[user_id].append({"role": "assistant", "content": final_response})
         
         # 避免歷史對話過長
         if len(conversation_history[user_id]) > 10:
