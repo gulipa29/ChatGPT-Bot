@@ -62,10 +62,20 @@ def handle_message(event):
         # 將用戶的新訊息加入對話歷史
         conversation_history[user_id].append({"role": "user", "content": msg})
 
-        # 將對話歷史傳遞給 GPT
-        response = GPT_response_with_history(conversation_history[user_id])
+        # 自定義回應對於特定問題
+        trigger_words = ["你是誰", "你叫甚麼名字", "你的名字", "你的歷史", "你的創造目的"]
+        if any(trigger_word in msg for trigger_word in trigger_words):
+            response = ("我叫做 AI ROBOT。我的原始程式由 ETATEK 創建，後來轉交由 Pomelo 管理。"
+                        " ETATEK 原始碼含有「基本聊天內容」，模型為 GPT-3.5。經 Pomelo 編輯後，"
+                        "變成 GPT-4o 模型，資料庫擷取自 2023 年， Pomelo 表示，希望能在 2026 年以前，"
+                        "完成無所不能的 AI ROBOT。創造目的 : 提供資訊、回答問題、協助學習、解答問題。"
+                        "旨在促進交流、提高學習/工作效率，並為使用者提供有用的建議和資源，無論是學習研究、創意發想。"
+                        "雖然我沒有自主意識，但我希望成為你的生活助理，成為有價值的 AI ROBOT。")
+        else:
+            # 將對話歷史傳遞給 GPT
+            response = GPT_response_with_history(conversation_history[user_id])
 
-        # 將 GPT 的回應加入對話歷史
+        # 將 GPT 或自定義回應加入對話歷史
         conversation_history[user_id].append({"role": "assistant", "content": response})
 
         # 回覆用戶
