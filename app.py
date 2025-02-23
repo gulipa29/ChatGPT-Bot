@@ -63,7 +63,7 @@ def handle_message(event):
         conversation_history[user_id].append({"role": "user", "content": msg})
 
         # 自定義回應對於特定問題
-        trigger_words = ["你是誰", "你叫甚麼名字", "你的名字", "你的歷史", "你的創造目的"]
+        trigger_words = ["你是誰", "你叫甚麼名字","你叫什麼名字", "你的名字", "你的歷史", "你的創造目的", "嗨你好，你是?","嗨，你叫什麼名字", "你的名字是?", "你好，你是誰?", "嗨，你的歷史"]
         if any(trigger_word in msg for trigger_word in trigger_words):
             response = ("我叫做 AI ROBOT。我的原始程式由 ETATEK 創建，後來轉交由 Pomelo 管理。"
                         " ETATEK 原始碼含有「基本聊天內容」，模型為 GPT-3.5。經 Pomelo 編輯後，"
