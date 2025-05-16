@@ -1,8 +1,7 @@
-line-bot-sdk
 flask
-openai < 1.0.0
-gunicorn
-googletrans==4.0.0-rc1
-gtts
-deep_translator
-beautifulsoup4 google
+line-bot-sdk
+openai
+requests
+beautifulsoup4
+googlesearch-python
+python-dotenv
